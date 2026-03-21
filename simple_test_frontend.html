@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game of Life</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h2 {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .board {
+            display: inline-grid;
+            gap: 1px;
+            background-color: #ddd;
+            border: 2px solid #999;
+            padding: 1px;
+        }
+
+        .cell {
+            width: 25px;
+            height: 25px;
+            background-color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .cell.alive {
+            background-color: #2ecc71;
+        }
+
+        .cell:hover {
+            opacity: 0.7;
+        }
+
+        .controls {
+            margin-top: 15px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: inline-block;
+            width: 180px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        input[type="number"] {
+            padding: 8px;
+            width: 100px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        button.clear {
+            background-color: #e74c3c;
+        }
+
+        button.clear:hover {
+            background-color: #c0392b;
+        }
+
+        .navigation {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .generation-info {
+            font-size: 16px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .error {
+            color: #e74c3c;
+            padding: 10px;
+            background-color: #fadbd8;
+            border-radius: 5px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .boards-container {
+            display: flex;
+            gap: 50px;
+            flex-wrap: wrap;
+        }
+
+        .board-section {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        #resultBoard {
+            margin-top: 15px;
+        }
+
+        .loading {
+            display: none;
+            margin-top: 15px;
+            color: #3498db;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Game of Life Simulator</h1>
+        
+        <div class="boards-container">
+            <!-- Input Board Section -->
+            <div class="board-section">
+                <div class="section">
+                    <h2>Input Board (Click cells to toggle)</h2>
+                    <div id="inputBoard" class="board"></div>
+                    
+                    <div class="controls">
+                        <div class="input-group">
+                            <label for="boardSize">Board Size:</label>
+                            <input type="number" id="boardSize" value="20" min="5" max="50">
+                            <button onclick="createInputBoard()">Resize</button>
+                        </div>
+                        
+                        <div class="input-group">
+                            <label for="generations">Generations:</label>
+                            <input type="number" id="generations" value="20" min="1" max="100">
+                        </div>
+                        
+                        <button onclick="addGlider()">Add Glider</button>
+                        <button onclick="clearBoard()" class="clear">Clear Board</button>
+                        <button onclick="computeGenerations()">Compute Generations</button>
+                        
+                        <div class="loading" id="loading">Computing...</div>
+                        <div class="error" id="error"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Board Section -->
+            <div class="board-section">
+                <div class="section">
+                    <h2>Result</h2>
+                    <div id="resultBoard" class="board" style="display: none;"></div>
+                    
+                    <div class="navigation">
+                        <button onclick="previousGeneration()" id="prevBtn" disabled>← Previous</button>
+                        <button onclick="nextGeneration()" id="nextBtn" disabled>Next →</button>
+                        <span class="generation-info" id="generationInfo"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let boardSize = 20;
+        let inputBoardData = [];
+        let generationsData = [];
+        let currentGenerationIndex = 0;
+        const API_URL = 'http://127.0.0.1:5000/api/next_generations';
+
+        // Initialize
+        createInputBoard();
+
+        function createInputBoard() {
+            boardSize = parseInt(document.getElementById('boardSize').value);
+            const inputBoard = document.getElementById('inputBoard');
+            inputBoard.innerHTML = '';
+            inputBoard.style.gridTemplateColumns = `repeat(${boardSize}, 25px)`;
+            
+            inputBoardData = Array(boardSize).fill(0).map(() => Array(boardSize).fill(0));
+            
+            for (let i = 0; i < boardSize; i++) {
+                for (let j = 0; j < boardSize; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    cell.onclick = () => toggleCell(i, j, cell);
+                    inputBoard.appendChild(cell);
+                }
+            }
+        }
+
+        function toggleCell(row, col, cell) {
+            inputBoardData[row][col] = inputBoardData[row][col] === 0 ? 1 : 0;
+            cell.classList.toggle('alive');
+        }
+
+        function clearBoard() {
+            inputBoardData = Array(boardSize).fill(0).map(() => Array(boardSize).fill(0));
+            document.querySelectorAll('#inputBoard .cell').forEach(cell => {
+                cell.classList.remove('alive');
+            });
+        }
+
+        function addGlider() {
+            const row = Math.floor(boardSize / 4);
+            const col = Math.floor(boardSize / 4);
+            
+            // Glider pattern
+            if (row + 2 < boardSize && col + 2 < boardSize) {
+                inputBoardData[row][col + 1] = 1;
+                inputBoardData[row + 1][col + 2] = 1;
+                inputBoardData[row + 2][col] = 1;
+                inputBoardData[row + 2][col + 1] = 1;
+                inputBoardData[row + 2][col + 2] = 1;
+                
+                updateInputBoardDisplay();
+            }
+        }
+
+        function updateInputBoardDisplay() {
+            const cells = document.querySelectorAll('#inputBoard .cell');
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                if (inputBoardData[row][col] === 1) {
+                    cell.classList.add('alive');
+                } else {
+                    cell.classList.remove('alive');
+                }
+            });
+        }
+
+        async function computeGenerations() {
+            const generations = parseInt(document.getElementById('generations').value);
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            
+            errorDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        initial_board: inputBoardData,
+                        generations_number: generations
+                    })
+                });
+                
+                if (!response.ok) {
+                    // Try to get error message from response body
+                    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.error) {
+                            errorMessage = `Server error: ${errorData.error}`;
+                        }
+                    } catch (e) {
+                        // If response is not JSON, use status text
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                const data = await response.json();
+                generationsData = data.result;
+                currentGenerationIndex = 0;
+                
+                displayGeneration(0);
+                updateNavigationButtons();
+                
+            } catch (error) {
+                let errorMessage = '';
+                
+                // Check if it's a network error (server not running)
+                if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+                    errorMessage = '❌ Cannot connect to server! Make sure Flask is running at ' + API_URL;
+                    console.error('Network error: Is the Flask server running?');
+                } else {
+                    errorMessage = `❌ ${error.message}`;
+                }
+                
+                errorDiv.textContent = errorMessage;
+                errorDiv.style.display = 'block';
+                console.error('Full error details:', error);
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        function displayGeneration(index) {
+            if (generationsData.length === 0) return;
+            
+            const resultBoard = document.getElementById('resultBoard');
+            resultBoard.innerHTML = '';
+            resultBoard.style.display = 'inline-grid';
+            resultBoard.style.gridTemplateColumns = `repeat(${boardSize}, 25px)`;
+            
+            const generation = generationsData[index];
+            
+            for (let i = 0; i < generation.length; i++) {
+                for (let j = 0; j < generation[i].length; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    if (generation[i][j] === 1) {
+                        cell.classList.add('alive');
+                    }
+                    resultBoard.appendChild(cell);
+                }
+            }
+            
+            document.getElementById('generationInfo').textContent = 
+                `Generation ${index + 1} of ${generationsData.length}`;
+        }
+
+        function nextGeneration() {
+            if (currentGenerationIndex < generationsData.length - 1) {
+                currentGenerationIndex++;
+                displayGeneration(currentGenerationIndex);
+                updateNavigationButtons();
+            }
+        }
+
+        function previousGeneration() {
+            if (currentGenerationIndex > 0) {
+                currentGenerationIndex--;
+                displayGeneration(currentGenerationIndex);
+                updateNavigationButtons();
+            }
+        }
+
+        function updateNavigationButtons() {
+            document.getElementById('prevBtn').disabled = currentGenerationIndex === 0;
+            document.getElementById('nextBtn').disabled = 
+                currentGenerationIndex === generationsData.length - 1;
+        }
+    </script>
+</body>
+</html>
